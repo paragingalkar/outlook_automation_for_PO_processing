@@ -1,9 +1,23 @@
 import win32com.client as client
 from openpyxl import load_workbook
 
+import logging
+from logging.handlers import TimedRotatingFileHandler
+
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        TimedRotatingFileHandler(
+            filename="outlook.log", when="s", interval=1, backupCount=5
+        )
+    ],
+)
+logger = logging.getLogger("main")
+logger.setLevel(logging.DEBUG)
+
 outlook = client.Dispatch("Outlook.Application")
 namespace = outlook.GetNameSpace("MAPI")
-
 
 wb = load_workbook("config.xlsx")
 ws = wb.active
@@ -21,24 +35,25 @@ for var, val in zip(ws["A"], ws["B"]):
     elif var.value == "PO processing folder":
         po_to_process_folder = val.value
 wb.close()
+logger.info("Config data loaded")
 
 for account, folder in zip(accounts, folders):
 
     account = namespace.Folders.Item(account)
-    print("Current Account is " + account.Name)
+    logger.info("Current Account is " + account.Name)
     folder = account.Folders.Item(folder)
-    print("Current Folder is " + folder.Name)
+    logger.info("Current Folder is " + folder.Name)
     drafts = account.Folders.Item("Drafts")
 
     mails = [message for message in folder.Items if "PO" in message.Subject]
-    print(str(len(mails)) + " mails fetched to be processed")
+    logger.info(str(len(mails)) + " mails fetched to be processed")
     for mail in mails:
         subject = mail.Subject
         words = subject.split()
         for word in words:
             if word.startswith("PO"):
                 po_number = word
-                print(
+                logger.debug(
                     "Mail for "
                     + po_number
                     + " found in "
@@ -52,7 +67,7 @@ for account, folder in zip(accounts, folders):
         try:
             workbook = load_workbook(po_to_process_folder + po_number + ".xlsx")
             worksheet = workbook.active
-            print(po_number + ".xlsx found in the folder")
+            logger.debug(po_number + ".xlsx found in the folder")
             To = worksheet["A1"].value
             if To == None:
                 To = ""
@@ -75,10 +90,10 @@ for account, folder in zip(accounts, folders):
                 mail.Bcc = Bcc + ";" + main_sales_account
             mail.Body = mail.Body.format(Comment)
             mail.Send()
-            print("Mail " + po_number + " sent.")
+            logger.info("Mail " + po_number + " sent.")
         except FileNotFoundError:
-            print(po_number + ".xlsx not found in the folder")
-            print("Mail " + po_number + " not sent")
+            logger.warning(po_number + ".xlsx not found in the folder")
+            logger.info("Mail " + po_number + " not sent")
 
-    print("Account " + account.Name + " is processed. Moving to next account")
-print("All accounts processed")
+    logger.info("Account " + account.Name + " is processed. Moving to next account")
+logger.info("All accounts processed")
